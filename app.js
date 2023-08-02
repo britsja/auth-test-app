@@ -3,6 +3,7 @@ const bodyParser = require("body-parser");
 const ejs = require("ejs");
 const mongoose = require('mongoose');
 require('dotenv').config({path: __dirname + '/.env'});
+const encrypt = require('mongoose-encryption');
 
 const app = express();
 
@@ -22,10 +23,13 @@ connection.once('open', () => {
     console.log('MongoDB connection established');
 })
 
-const userSchema = {
+const userSchema = new mongoose.Schema( {
     email: String,
     password: String
-}
+})
+
+const secret = process.env.SECRET;
+userSchema.plugin(encrypt, {secret: secret, encryptedFields: ['password']});
 
 const User = new mongoose.model("User", userSchema);
 
@@ -34,19 +38,52 @@ app.route("/")
         function(req, res) {
             res.render("home");
         }
-    );
+    );    
 
 app.route("/login")
     .get(
         function(req, res) {
             res.render("login");
         }
+    )
+    .post(
+        async function(req, res) {
+            const username = req.body.username;
+            const password = req.body.password;                 
+
+            await User.findOne({email: username}).then((data) => {
+                
+                if (data.password === password) {
+                    res.render('secrets');
+                }                
+            })
+            .catch((err)=>{
+                console.log(err);
+                res.render("login")
+            });           
+            
+        }    
     );
 
 app.route("/register")
     .get(
         function(req, res) {
             res.render("register");
+        }
+    )
+    .post(
+        async function(req, res) {
+            try {
+            const newUser = new User({
+                email: req.body.username,
+                password: req.body.password
+            });
+            await newUser.save();
+            res.render('secrets');
+            }
+            catch(err) {
+                console.log(err);                
+            }
         }
     );
 
