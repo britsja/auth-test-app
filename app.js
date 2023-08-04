@@ -3,10 +3,9 @@ const bodyParser = require("body-parser");
 const ejs = require("ejs");
 const mongoose = require('mongoose');
 require('dotenv').config({path: __dirname + '/.env'});
-const bcrypt = require('bcrypt');
-
-const saltRounds = 8;
-
+const session = require('express-session')
+const passport = require('passport')
+const passportLocalMongoose = require('passport-local-mongoose');
 
 const app = express();
 
@@ -20,6 +19,15 @@ app.listen(3000, function() {
     console.log("Server listening on port 3000");
 });
 
+app.use(session({
+    secret: ";akdsjhf;klanjsv;ahds;ajksn;jkn;kjands;kjnsd;kjnsad",
+    resave: false,
+    saveUninitialized: false
+}));
+
+app.use(passport.initialize());
+app.use(passport.session());
+
 mongoose.connect(uri);
 const connection = mongoose.connection;
 connection.once('open', () => {
@@ -31,9 +39,15 @@ const userSchema = new mongoose.Schema( {
     password: String
 })
 
+userSchema.plugin(passportLocalMongoose);
+
 const secret = process.env.SECRET;
 
 const User = new mongoose.model("User", userSchema);
+
+passport.use(User.createStrategy());
+passport.serializeUser(User.serializeUser());
+passport.deserializeUser(User.deserializeUser());
 
 app.route("/")
     .get(
@@ -49,32 +63,22 @@ app.route("/login")
         }
     )
     .post(
-        async function(req, res) {
-            const username = req.body.username;
-            const password = req.body.password;                 
+        function(req, res) {
+            const user = new User({
+                username: req.body.username,
+                password: req.body.password
+            });
 
-            await User.findOne({email: username}).then((data) => {
-                
-                if (data) {
-                    bcrypt.compare(password, data.password, function(err, result) {
-                        if (result === true) {
-                            res.render("secrets");
-                        }
-                        else {                            
-                            res.render("login");
-                        }
-                    })
-                }  
-                else {
-                    res.render("login");
-                }              
-            })
-            .catch((err)=>{
-                console.log(err);
-                res.render("login")
-            });           
-            
-        }    
+            req.login(user, function(err) {
+                if(err) {
+                    console.log(err);
+                } else {
+                    passport.authenticate("local")(req,res, function() {
+                        res.redirect("/secrets");
+                    });
+                }
+            });
+        }
     );
 
 app.route("/register")
@@ -85,27 +89,27 @@ app.route("/register")
     )
     .post(
         function(req, res) {
-            try {
-
-            bcrypt.hash(req.body.password, saltRounds, async function(err, hash) {
-                const newUser = new User({
-                    email: req.body.username,
-                    password: hash
-                });
-                await newUser.save();
-                res.render('secrets');
-            });            
-            }
-            catch(err) {
-                console.log(err);                
-            }
+            User.register({username: req.body.username}, req.body.password, function(err, user) {
+                if (err) {
+                    console.log(err);
+                    res.redirect("/register")
+                } else {
+                    passport.authenticate("local")(req, res, function() {
+                        res.redirect("/secrets");
+                    })
+                }
+            });
         }
     );
 
 app.route("/secrets")
     .get(
         function(req, res) {
-            res.render("secrets");
+            if (req.isAuthenticated()) {
+                res.render("secrets");
+            } else {
+                res.redirect("/login");
+            }            
         }
     );
 
@@ -113,5 +117,15 @@ app.route("/submit")
     .get(
         function(req, res) {
             res.render("submit");
+        }
+    );
+
+app.route("/logout")
+    .get(
+        function(req, res) {
+            req.logout(function(err) {
+                if (err) { return next(err); }
+                res.redirect('/');
+              });            
         }
     );
