@@ -20,7 +20,7 @@ app.listen(3000, function() {
 });
 
 app.use(session({
-    secret: ";akdsjhf;klanjsv;ahds;ajksn;jkn;kjands;kjnsd;kjnsad",
+    secret: process.env.SECRET,
     resave: false,
     saveUninitialized: false
 }));
