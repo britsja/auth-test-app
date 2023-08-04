@@ -6,6 +6,8 @@ require('dotenv').config({path: __dirname + '/.env'});
 const session = require('express-session')
 const passport = require('passport')
 const passportLocalMongoose = require('passport-local-mongoose');
+const GoogleStrategy = require('passport-google-oauth20').Strategy;
+const findOrCreate = require('mongoose-findorcreate');
 
 const app = express();
 
@@ -36,25 +38,65 @@ connection.once('open', () => {
 
 const userSchema = new mongoose.Schema( {
     email: String,
-    password: String
+    password: String,
+    googleId: String
 })
 
 userSchema.plugin(passportLocalMongoose);
+userSchema.plugin(findOrCreate);
 
 const secret = process.env.SECRET;
 
 const User = new mongoose.model("User", userSchema);
 
 passport.use(User.createStrategy());
-passport.serializeUser(User.serializeUser());
-passport.deserializeUser(User.deserializeUser());
+
+passport.serializeUser(function(user, cb) {
+    process.nextTick(function() {
+      return cb(null, {
+        id: user.id        
+      });
+    });
+  });
+  
+passport.deserializeUser(function(user, cb) {
+    process.nextTick(function() {
+        return cb(null, user);
+    });
+});
+
+passport.use(new GoogleStrategy({
+    clientID: process.env.CLIENT_ID,
+    clientSecret: process.env.CLIENT_SECRET,
+    callbackURL: "http://localhost:3000/auth/google/secrets",
+    userProfileURL: "https://www.googleapis.com/oauth2/v3/userinfo"
+  },
+  function(accessToken, refreshToken, profile, cb) {
+    User.findOrCreate({ googleId: profile.id }, function (err, user) {
+      return cb(err, user);
+    });
+  }
+));
 
 app.route("/")
     .get(
         function(req, res) {
             res.render("home");
         }
-    );    
+    );  
+    
+app.route("/auth/google")
+    .get(
+        passport.authenticate('google', { scope: ['profile'] }) 
+    )
+
+app.route("/auth/google/secrets")
+    .get(
+        passport.authenticate('google', { failureRedirect: '/login' }),
+        function(req, res) {            
+            res.redirect('/secrets');
+        }
+    );
 
 app.route("/login")
     .get(
