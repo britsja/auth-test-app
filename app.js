@@ -3,7 +3,9 @@ const bodyParser = require("body-parser");
 const ejs = require("ejs");
 const mongoose = require('mongoose');
 require('dotenv').config({path: __dirname + '/.env'});
-const md5 = require('md5');
+const bcrypt = require('bcrypt');
+
+const saltRounds = 8;
 
 
 const app = express();
@@ -49,16 +51,22 @@ app.route("/login")
     .post(
         async function(req, res) {
             const username = req.body.username;
-            const password = md5(req.body.password);                 
+            const password = req.body.password;                 
 
             await User.findOne({email: username}).then((data) => {
                 
-                if (data.password === password) {
-                    res.render('secrets');
+                if (data) {
+                    bcrypt.compare(password, data.password, function(err, result) {
+                        if (result === true) {
+                            res.render("secrets");
+                        }
+                        else {                            
+                            res.render("login");
+                        }
+                    })
                 }  
                 else {
-                    console.log("Password given: " + password);
-                    console.log("Password in DB: " + data.password);
+                    res.render("login");
                 }              
             })
             .catch((err)=>{
@@ -76,14 +84,17 @@ app.route("/register")
         }
     )
     .post(
-        async function(req, res) {
+        function(req, res) {
             try {
-            const newUser = new User({
-                email: req.body.username,
-                password: md5(req.body.password)
-            });
-            await newUser.save();
-            res.render('secrets');
+
+            bcrypt.hash(req.body.password, saltRounds, async function(err, hash) {
+                const newUser = new User({
+                    email: req.body.username,
+                    password: hash
+                });
+                await newUser.save();
+                res.render('secrets');
+            });            
             }
             catch(err) {
                 console.log(err);                
